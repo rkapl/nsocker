@@ -141,7 +141,7 @@ int main(int argc, char *argv[])
 	event_base_dispatch(base);
 
 	evconnlistener_free(listener);
-	evsignal_del(sigevent);
+	event_free(sigevent);
 	event_base_free(base);
 	unlink(path);
 	return 0;

@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 // https://keithp.com/blogs/fd-passing/
 // https://unix.stackexchange.com/questions/185011/what-happens-with-unix-stream-ancillary-data-on-partial-reads
@@ -96,6 +97,7 @@ bool ns_send(msg_writer *buf)
 	msg.msg_iovlen = buf->ioptr.count;
 	msg.msg_flags = 0;
 	if (buf->fd >= 0) {
+		bzero(cbuf, sizeof(cbuf));
 		msg.msg_control = cbuf;
 		msg.msg_controllen = CMSG_SPACE(sizeof(int));
 
@@ -182,6 +184,7 @@ bool ns_recv(msg_reader *buf)
 	msg.msg_iovlen = buf->ioptr.count;
 	msg.msg_flags = 0;
 	if (buf->fd) {
+		bzero(cbuf, sizeof(cbuf));
 		msg.msg_control = cbuf;
 		msg.msg_controllen = CMSG_LEN(sizeof(int));
 
