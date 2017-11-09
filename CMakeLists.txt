@@ -2,10 +2,11 @@ cmake_minimum_required(VERSION 2.8)
 project(nsocker)
 include(GNUInstallDirs)
 include(FindPkgConfig)
+add_subdirectory(python)
+
+pkg_check_modules (EV REQUIRED libevent_core)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-unused-parameter")
-
-pkg_check_modules (EV libevent_core)
 
 add_executable(nsocker-daemon daemon.c fd.c)
 target_include_directories(nsocker-daemon PRIVATE include ${EV_INCLUDE_DIRS})

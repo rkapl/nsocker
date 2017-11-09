@@ -24,4 +24,5 @@ typedef struct ns_context_{
 ns_client* ns_push(ns_context *newctx);
 void ns_pop(ns_context *current);
 ns_client* ns_get();
+ns_context* ns_get_context();
 

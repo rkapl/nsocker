@@ -53,6 +53,12 @@ void ns_pop(ns_context *current)
 		abort();
 }
 
+ns_context* ns_get_context()
+{
+	ns_context* c = pthread_getspecific(tls_key);
+	return c;
+}
+
 ns_client* ns_get()
 {
 	ns_context* c = pthread_getspecific(tls_key);
