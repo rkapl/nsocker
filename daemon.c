@@ -65,7 +65,7 @@ int main(int argc, char *argv[])
 	int opt;
 	static struct option opts[] = {
 		{"help",     no_argument,       NULL, 'h'},
-		{"verbose",  required_argument, NULL, 'v'},
+		{"verbose",  no_argument,       NULL, 'v'},
 		{0, 0, 0, 0 }
 	};
 
