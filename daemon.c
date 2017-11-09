@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/stat.h>
 #include <signal.h>
 #include <event2/event.h>
 #include <event2/listener.h>
@@ -56,6 +57,7 @@ static void usage(const char* progname)
 	printf("Run a socket server listening on a given unix socket path for requests\n");
 	printf("\n");
 	printf("  -v, --verbose be verbose\n");
+	printf("  -m, --mode    unix socket creation mode\n");
 	printf("  -h, --help    show this message\n");
 }
 
@@ -63,13 +65,17 @@ int main(int argc, char *argv[])
 {
 	int longopt = 0;
 	int opt;
+
+	bool mode_override = false;
+	mode_t mode = 0, old_mode;
 	static struct option opts[] = {
 		{"help",     no_argument,       NULL, 'h'},
 		{"verbose",  no_argument,       NULL, 'v'},
+		{"mode",     required_argument, NULL, 'm'},
 		{0, 0, 0, 0 }
 	};
 
-	while ((opt = getopt_long(argc, argv, "hv", opts, &longopt)) != -1) {
+	while ((opt = getopt_long(argc, argv, "hvm:", opts, &longopt)) != -1) {
 		switch(opt){
 		case 'h':
 			usage(argv[0]);
@@ -78,6 +84,13 @@ int main(int argc, char *argv[])
 		case 'v':
 			verbose = true;
 			break;
+		case 'm':
+			mode_override = true;
+			if (sscanf(optarg, "%o", &mode) != 1) {
+				fprintf(stderr, "invalid value provided to mode switch\n");
+				exit(1);
+			}
+		break;
 		case '?':
 			return 1;
 			break;
@@ -105,9 +118,13 @@ int main(int argc, char *argv[])
 	}
 	strncpy(sun.sun_path, path, sizeof(sun.sun_path));
 
+	if (mode_override)
+		old_mode = umask(~mode);
 	struct evconnlistener *listener = evconnlistener_new_bind(
 		base, listener_cb, NULL, LEV_OPT_CLOSE_ON_FREE, -1,
 		(struct sockaddr*)&sun, SUN_LEN(&sun));
+	if (mode_override)
+		umask(old_mode);
 
 	if (!listener) {
 		perror("can not bind socket");
