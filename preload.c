@@ -17,8 +17,6 @@ static char* path;
 
 static void init() __attribute__((constructor));
 static void fini() __attribute__((destructor));
-static bool default_ctx();
-static void free_default_ctx(ns_context *ctx);
 
 static void init()
 {
@@ -33,54 +31,20 @@ static void fini()
 	free(path);
 }
 
-static void free_default_ctx(ns_context *ctx)
-{
-	ns_client_free(ctx->socket_client);
-	free(ctx->socket_client);
-	free(ctx);
-}
-
-static bool default_ctx()
-{
-	ns_context *ctx = malloc(sizeof(*ctx));
-	ns_client *c = malloc(sizeof(*ctx));
-	if (!ctx || !c) {
-		free(c);
-		free(ctx);
-		errno = ENOMEM;
-		return false;
-	}
-	ns_client_init(c);
-
-	if(!ns_client_connect(c, path)) {
-		perror("connecting to NSOCKER_SERVER");
-		errno = EPROTO;
-		free_default_ctx(ctx);
-		return false;
-	}
-
-	if (!ns_push(ctx)) {
-		errno = ENOMEM;
-		free_default_ctx(ctx);
-		return false;
-	}
-	ctx->pop_cb = free_default_ctx;
-	ctx->socket_client = c;
-
-	return true;
-}
-
 int socket(int domain, int type, int protocol)
 {
 	if (domain == AF_UNIX) {
 		return prev_socket(domain, type, protocol);
 	} else {
-		ns_context *c = ns_get_context();
+		ns_context *c = ns_get();
 		if (!c) {
 			if (path) {
-				if(!default_ctx())
+				if(!ns_context_push_new(path)) {
+					perror("connecting to NSOCKET_SERVER");
+					errno = EPROTO;
 					return -1;
-				c = ns_get_context();
+				}
+				c = ns_get();
 			} else {
 				return prev_socket(domain, type, protocol);
 			}

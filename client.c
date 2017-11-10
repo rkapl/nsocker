@@ -81,3 +81,42 @@ void ns_client_free(ns_client *ns)
 	if (ns->sockfd)
 		close(ns->sockfd);
 }
+
+typedef struct {
+	ns_context ctx;
+	ns_client client;
+} cc;
+
+static void free_cc(ns_context *ctx)
+{
+	ns_client_free(ctx->socket_client);
+	ns_context_free(ctx);
+	free(ctx);
+}
+
+bool ns_context_push_new(const char *path)
+{
+	cc *cc = malloc(sizeof(*cc));
+	if (!cc) {
+		free(cc);
+		errno = ENOMEM;
+		return false;
+	}
+	ns_context_init(&cc->ctx);
+	ns_client_init(&cc->client);
+	cc->ctx.socket_client = &cc->client;
+	cc->ctx.pop_cb = free_cc;
+
+	if(!ns_client_connect(&cc->client, path)) {
+		free_cc(&cc->ctx);
+		return false;
+	}
+
+	if (!ns_push(&cc->ctx)) {
+		errno = ENOMEM;
+		free_cc(&cc->ctx);
+		return false;
+	}
+
+	return true;
+}

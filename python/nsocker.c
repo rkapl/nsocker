@@ -1,13 +1,6 @@
 #include <Python.h>
 #include <nsocker/client.h>
 
-static void free_ctx(ns_context *ctx)
-{
-	ns_client_free(ctx->socket_client);
-	free(ctx->socket_client);
-	free(ctx);
-}
-
 static PyObject *nsocker_push(PyObject *self, PyObject *args)
 {
     const char *path;
@@ -15,22 +8,8 @@ static PyObject *nsocker_push(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "s", &path))
 	return NULL;
 
-    ns_context *ctx = malloc(sizeof(*ctx));
-    ns_client *c = malloc(sizeof(*c));
-    if (!c || !ctx)
-	    abort();
-
-    ns_client_init(c);
-    if (!ns_client_connect(c, path)) {
-	    free_ctx(ctx);
+    if (!ns_context_push_new(path))
 	    return PyErr_SetFromErrnoWithFilename(PyExc_OSError, path);
-    }
-
-    if(!ns_push(ctx))
-	    abort();
-    ctx->pop_cb = free_ctx;
-    ctx->user = NULL;
-    ctx->socket_client = c;
 
     Py_RETURN_NONE;
 }

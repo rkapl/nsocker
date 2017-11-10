@@ -2,7 +2,10 @@ cmake_minimum_required(VERSION 2.8)
 project(nsocker)
 include(GNUInstallDirs)
 include(FindPkgConfig)
+enable_testing()
+
 add_subdirectory(python)
+add_subdirectory(test)
 
 pkg_check_modules (EV REQUIRED libevent_core)
 

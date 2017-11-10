@@ -30,6 +30,18 @@ static void free_context(ns_context *ctx)
 		ctx->pop_cb(ctx);
 }
 
+void ns_context_init(ns_context *ctx)
+{
+	ctx->flags = 0;
+	ctx->socket_client = NULL;
+	ctx->pop_cb = NULL;
+	ctx->user = NULL;
+}
+
+void ns_context_free(ns_context *ctx)
+{
+}
+
 ns_context *ns_push(ns_context *newctx)
 {
 	ns_context* old = pthread_getspecific(tls_key);
@@ -37,8 +49,6 @@ ns_context *ns_push(ns_context *newctx)
 		return NULL;
 
 	newctx->parent = old;
-	newctx->flags = 0;
-	newctx->socket_client = NULL;
 	return newctx;
 }
 
@@ -52,7 +62,7 @@ void ns_pop(ns_context *current)
 		abort();
 }
 
-ns_context* ns_get_context()
+ns_context* ns_get()
 {
 	ns_context* c = pthread_getspecific(tls_key);
 	return c;
