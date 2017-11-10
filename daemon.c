@@ -252,7 +252,8 @@ static void conn_read(evutil_socket_t sockfd, short what, void *user)
 	connection *c = user;
 	if (!ns_recv(&c->reader)) {
 		if (c->reader.eof) {
-			fprintf(stderr, "Client disconnected\n");
+			if (verbose)
+				fprintf(stderr, "Client disconnected\n");
 		} else {
 			abort_connection(c);
 		}
