@@ -26,12 +26,11 @@ static void key_init()
 
 static void free_context(ns_context *ctx)
 {
-	ns_client_free(&ctx->client);
 	if (ctx->pop_cb)
 		ctx->pop_cb(ctx);
 }
 
-ns_client* ns_push(ns_context *newctx)
+ns_context *ns_push(ns_context *newctx)
 {
 	ns_context* old = pthread_getspecific(tls_key);
 	if (pthread_setspecific(tls_key, newctx))
@@ -39,8 +38,8 @@ ns_client* ns_push(ns_context *newctx)
 
 	newctx->parent = old;
 	newctx->flags = 0;
-	ns_client_init(&newctx->client);
-	return &newctx->client;
+	newctx->socket_client = NULL;
+	return newctx;
 }
 
 void ns_pop(ns_context *current)
@@ -57,12 +56,4 @@ ns_context* ns_get_context()
 {
 	ns_context* c = pthread_getspecific(tls_key);
 	return c;
-}
-
-ns_client* ns_get()
-{
-	ns_context* c = pthread_getspecific(tls_key);
-	if (!c)
-		return NULL;
-	return &c->client;
 }

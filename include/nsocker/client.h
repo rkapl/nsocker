@@ -13,16 +13,16 @@ int ns_client_socket(ns_client *ns, int domain, int type, int protocol);
 void ns_client_free(ns_client *ns);
 
 typedef struct ns_context_{
-	ns_client client;
 	struct ns_context_ *parent;
 	int flags;
 	void (*pop_cb)(struct ns_context_* ctx);
 	void *user;
+
+	ns_client *socket_client;
 	void *reserved[1];
 } ns_context;
 
-ns_client* ns_push(ns_context *newctx);
+ns_context *ns_push(ns_context *newctx);
 void ns_pop(ns_context *current);
-ns_client* ns_get(void);
-ns_context* ns_get_context(void);
+ns_context *ns_get_context(void);
 

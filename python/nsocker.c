@@ -3,6 +3,8 @@
 
 static void free_ctx(ns_context *ctx)
 {
+	ns_client_free(ctx->socket_client);
+	free(ctx->socket_client);
 	free(ctx);
 }
 
@@ -14,12 +16,21 @@ static PyObject *nsocker_push(PyObject *self, PyObject *args)
 	return NULL;
 
     ns_context *ctx = malloc(sizeof(*ctx));
+    ns_client *c = malloc(sizeof(*c));
+    if (!c || !ctx)
+	    abort();
+
+    ns_client_init(c);
+    if (!ns_client_connect(c, path)) {
+	    free_ctx(ctx);
+	    return PyErr_SetFromErrnoWithFilename(PyExc_OSError, path);
+    }
+
+    if(!ns_push(ctx))
+	    abort();
     ctx->pop_cb = free_ctx;
     ctx->user = NULL;
-
-    ns_client* client = ns_push(ctx);
-    if (!ns_client_connect(client, path))
-	    return PyErr_SetFromErrnoWithFilename(PyExc_OSError, path);
+    ctx->socket_client = c;
 
     Py_RETURN_NONE;
 }
