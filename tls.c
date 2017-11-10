@@ -46,7 +46,7 @@ ns_client* ns_push(ns_context *newctx)
 void ns_pop(ns_context *current)
 {
 	ns_context* old = pthread_getspecific(tls_key);
-	assert(old == current);
+	assert(old == current || current == NULL);
 	ns_context* parent = old->parent;
 	free_context(old);
 	if (pthread_setspecific(tls_key, parent))

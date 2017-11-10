@@ -19,6 +19,9 @@ target_link_libraries(nsocker pthread)
 add_library(nsocker-preload SHARED preload.c)
 target_include_directories(nsocker-preload PRIVATE include)
 target_link_libraries(nsocker-preload dl nsocker)
+install(TARGETS nsocker nsocker-preload nsocker-daemon
+	RUNTIME DESTINATION bin
+	LIBRARY DESTINATION lib)
 
 file(GLOB HEADERS include/nsocker/*.h *.h)
 add_custom_target(headers SOURCES ${HEADERS})
