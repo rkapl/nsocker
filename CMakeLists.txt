@@ -8,12 +8,13 @@ add_subdirectory(python)
 add_subdirectory(test)
 
 pkg_check_modules (EV REQUIRED libevent_core)
+pkg_check_modules (DAEMON REQUIRED libdaemon)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-unused-parameter")
 
 add_executable(nsocker-daemon daemon.c fd.c)
-target_include_directories(nsocker-daemon PRIVATE include ${EV_INCLUDE_DIRS})
-target_link_libraries(nsocker-daemon ${EV_LIBRARIES})
+target_include_directories(nsocker-daemon PRIVATE include ${EV_INCLUDE_DIRS} ${DAEMON_INCLUDE_DIRS})
+target_link_libraries(nsocker-daemon ${EV_LIBRARIES} ${DAEMON_LIBRARIES})
 
 add_library(nsocker SHARED client.c tls.c fd.c)
 target_include_directories(nsocker PRIVATE include)

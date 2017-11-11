@@ -12,6 +12,7 @@
 #include <event2/bufferevent.h>
 #include <event2/buffer.h>
 #include <assert.h>
+#include <libdaemon/daemon.h>
 #include <nsocker/msg.h>
 #include <nsocker/fd.h>
 #include "fd.h"
@@ -21,6 +22,9 @@ static struct event_base* base;
 
 #define MAX_OUT_MSG 128
 #define MAX_IN_MSG 128
+
+enum {D_SIGINT, D_SIGTERM, D_SIGQUIT, D_SIGHUP, D_SIGCOUNT};
+static struct event* sighandlers[D_SIGCOUNT];
 
 typedef struct {
 	int sockfd;
@@ -45,20 +49,36 @@ static void conn_read(evutil_socket_t sockfd, short what, void *user);
 static void conn_write(evutil_socket_t sockfd, short what, void *user);
 static bool abort_connection(connection *c);
 static void sigint_handler(evutil_socket_t fd, short event, void *arg);
+static void sighup_handler(evutil_socket_t fd, short event, void *arg);
 static void write_hdr(connection *c, ns_cmd cmd, size_t body_size);
 static void start_receive(connection *c);
 static void start_send(connection *c);
+static void daemon_perror(const char *msg);
 static void usage(const char* progname);
+static char* relpath(const char* path);
 
 static void usage(const char* progname)
 {
-	printf("Usage: %s [-v] <socket-file>\n", progname);
+	printf("Usage: %s [options] <socket-file>\n", progname);
 	printf("\n");
 	printf("Run a socket server listening on a given unix socket path for requests\n");
 	printf("\n");
-	printf("  -v, --verbose be verbose\n");
-	printf("  -m, --mode    unix socket creation mode\n");
-	printf("  -h, --help    show this message\n");
+	printf("  -v, --verbose     be verbose\n");
+	printf("  -m, --mode        unix socket creation mode\n");
+	printf("  -p, --pid         pid file path\n");
+	printf("  -f  --foreground  do not daemonize\n");
+	printf("  -h, --help        show this message\n");
+}
+
+static void daemon_perror(const char *msg)
+{
+	daemon_log(LOG_ERR, "%s: %s", msg, strerror(errno));
+}
+
+static char* working_directory;
+static char* pid_file = NULL;
+static const char* pid_file_proc(){
+	return pid_file;
 }
 
 int main(int argc, char *argv[])
@@ -66,16 +86,29 @@ int main(int argc, char *argv[])
 	int longopt = 0;
 	int opt;
 
+	int err = 1;
 	bool mode_override = false;
 	mode_t mode = 0, old_mode;
+	bool pid_file_created = false;
+	bool daemonize = true;
+	char* socket_path = NULL;
+	struct evconnlistener *listener = NULL;
 	static struct option opts[] = {
-		{"help",     no_argument,       NULL, 'h'},
-		{"verbose",  no_argument,       NULL, 'v'},
-		{"mode",     required_argument, NULL, 'm'},
+		{"help",        no_argument,       NULL, 'h'},
+		{"verbose",     no_argument,       NULL, 'v'},
+		{"mode",        required_argument, NULL, 'm'},
+		{"pid",         required_argument, NULL, 'p'},
+		{"foreground",  required_argument, NULL, 'f'},
 		{0, 0, 0, 0 }
 	};
 
-	while ((opt = getopt_long(argc, argv, "hvm:", opts, &longopt)) != -1) {
+	working_directory = getcwd(NULL, 0);
+	if (!working_directory) {
+		perror("getcwd");
+		return 1;
+	}
+
+	while ((opt = getopt_long(argc, argv, "hvm:p:f", opts, &longopt)) != -1) {
 		switch(opt){
 		case 'h':
 			usage(argv[0]);
@@ -83,6 +116,16 @@ int main(int argc, char *argv[])
 			break;
 		case 'v':
 			verbose = true;
+			break;
+		case 'p':
+			pid_file = relpath(optarg);
+			if (!pid_file) {
+				fprintf(stderr, "malloc failed");
+				goto err_before_daemon;
+			}
+			break;
+		case 'f':
+			daemonize = false;
 			break;
 		case 'm':
 			mode_override = true;
@@ -102,55 +145,161 @@ int main(int argc, char *argv[])
 	int remaining = argc - optind;
 	if (remaining != 1) {
 		fprintf(stderr, "Expected single socket file as argument\n");
-		return 1;
+		goto err_before_daemon;
 	}
+
+	socket_path = relpath(argv[optind]);
+	if (!socket_path) {
+		fprintf(stderr, "malloc failed");
+		goto err_before_daemon;
+	}
+
+	daemon_log_ident = daemon_ident_from_argv0(argv[0]);
+
+	/* Daemonize */
+	if (daemonize) {
+		pid_t pid;
+		if (pid_file) {
+			daemon_pid_file_proc = pid_file_proc;
+			if ((pid = daemon_pid_file_is_running()) >= 0) {
+				daemon_log(LOG_ERR, "Daemon already running on PID %u", pid);
+				return 1;
+			}
+		}
+
+		/* Prepare for return value passing from the initialization procedure of the daemon process */
+		if (daemon_retval_init() < 0) {
+			daemon_log(LOG_ERR, "Failed to create pipe.");
+			return 1;
+		}
+
+		if ((pid = daemon_fork()) < 0) {
+			perror("fork");
+			daemon_retval_done();
+			return 1;
+		} else if (pid) { /* The parent */
+			/* Wait for 20 seconds for the return value passed from the daemon process */
+			int ret;
+			if ((ret = daemon_retval_wait(20)) < 0) {
+				daemon_log(LOG_ERR, "Could not recieve return value from daemon process: %s", strerror(errno));
+				return 255;
+			}
+			if (ret != 0) {
+				fprintf(stderr, "daemon could not start, see sysglog for details or run with -f\n");
+			}
+			return ret;
+		}
+
+		/* Close FDs */
+		if (daemon_close_all(-1) < 0) {
+			daemon_log(LOG_ERR, "Failed to close all file descriptors: %s", strerror(errno));
+			goto err;
+		}
+
+		/* Create the PID file */
+		if (pid_file) {
+			if (daemon_pid_file_create() < 0) {
+				daemon_log(LOG_ERR, "Could not create PID file (%s).", strerror(errno));
+				goto err;
+			}
+			pid_file_created = true;
+		}
+	}
+
 	signal(SIGPIPE, SIG_IGN);
 
 	/* Bind socket and start listening */
 	base = event_base_new();
 
+	if (verbose)
+		daemon_log(LOG_INFO, "Using socket %s", socket_path);
+
 	struct sockaddr_un sun;
-	const char* path = argv[optind];
 	sun.sun_family = AF_UNIX;
-	if (strlen(path) + 1 >  sizeof(sun.sun_path)) {
-		fprintf(stderr, "Socket path is too long\n");
-		return 1;
+	if (strlen(socket_path) + 1 >  sizeof(sun.sun_path)) {
+		daemon_log(LOG_ERR, "Socket path is too long\n");
+		goto err;
 	}
-	strncpy(sun.sun_path, path, sizeof(sun.sun_path));
+	strncpy(sun.sun_path, socket_path, sizeof(sun.sun_path));
 
 	if (mode_override)
 		old_mode = umask(~mode);
-	struct evconnlistener *listener = evconnlistener_new_bind(
+	listener = evconnlistener_new_bind(
 		base, listener_cb, NULL, LEV_OPT_CLOSE_ON_FREE, -1,
 		(struct sockaddr*)&sun, SUN_LEN(&sun));
 	if (mode_override)
 		umask(old_mode);
 
 	if (!listener) {
-		perror("can not bind socket");
-		return 1;
+		daemon_perror("can not bind socket");
+		goto err;
 	}
 
-	struct event *sigevent = evsignal_new(base, SIGINT, sigint_handler, NULL);
-	if(!sigevent) {
-		fprintf(stderr, "can not register signal handler\n");
-		return 1;
+	sighandlers[D_SIGINT] = evsignal_new(base, SIGINT, sigint_handler, NULL);
+	sighandlers[D_SIGQUIT] = evsignal_new(base, SIGQUIT, sigint_handler, NULL);
+	sighandlers[D_SIGTERM] = evsignal_new(base, SIGTERM, sigint_handler, NULL);
+	sighandlers[D_SIGHUP] = evsignal_new(base, SIGHUP, sighup_handler, NULL);
+	for(int i = 0; i<D_SIGCOUNT; i++) {
+		if(!sighandlers[i]) {
+			daemon_log(LOG_ERR, "Failed to allocate signal handlers");
+			goto err;
+		}
+		event_add(sighandlers[i], NULL);
 	}
-	event_add(sigevent, NULL);
 
+	daemon_retval_send(0);
+	err = 0;
+	daemon_log(LOG_INFO, "accepting connections");
 	event_base_dispatch(base);
 
-	evconnlistener_free(listener);
-	event_free(sigevent);
-	event_base_free(base);
-	unlink(path);
-	return 0;
+	err:
+	daemon_log(LOG_INFO, "exiting");
+	if (listener) {
+		evconnlistener_free(listener);
+		unlink(socket_path);
+	}
+	for(int i = 0; i<D_SIGCOUNT; i++)
+		if (sighandlers[i])
+			event_free(sighandlers[i]);
+	if (base)
+		event_base_free(base);
+	if (pid_file_created)
+		daemon_pid_file_remove();
+	if (daemonize && err)
+		daemon_retval_send(err);
+
+	err_before_daemon:
+	free(socket_path);
+	free(pid_file);
+	free(working_directory);
+	return err;
+}
+
+static char* relpath(const char* path)
+{
+	if (*path == '/') {
+		return strdup(path);
+	} else {
+		size_t len = strlen(path) + 1 + strlen(working_directory);
+		char *buf = malloc(len);
+		if (!buf)
+			return NULL;
+		strcpy(buf, working_directory);
+		strcat(buf, "/");
+		strcat(buf, path);
+		return buf;
+	}
 }
 
 static void sigint_handler(evutil_socket_t fd, short event, void *arg)
 {
-	fprintf(stderr, "SIGINT received\n");
+	daemon_log(LOG_INFO, "SIGINT received");
 	event_base_loopbreak(base);
+}
+
+static void sighup_handler(evutil_socket_t fd, short event, void *arg)
+{
+
 }
 
 #define BUFFER_SIZE 128
@@ -159,11 +308,11 @@ static void listener_cb(
 	struct sockaddr* from, int socklen, void* user)
 {
 	if (verbose)
-		fprintf(stderr, "Received new connection\n");
+		daemon_log(LOG_INFO, "Received new connection\n");
 
 	connection *c = malloc(sizeof(*c));
 	if(!c) {
-		fprintf(stderr, "out of memory, can not accept connection");
+		daemon_log(LOG_ERR, "out of memory, can not accept connection");
 		return;
 	}
 	c->write_pending = false;
@@ -219,7 +368,7 @@ static bool handle_socket(connection *c) {
 	bool sockfd_ok = !(sockfd < 0);
 	rsocket->error = htobe32(sockfd_ok ? 0 : errno);
 	if (verbose)
-		fprintf(stderr, "socket(%d, %d, %d) -> fd=%d, errno=%d\n",
+		daemon_log(LOG_INFO, "socket(%d, %d, %d) -> fd=%d, errno=%d\n",
 			be32toh(tsocket->domain), be32toh(tsocket->type), be32toh(tsocket->protocol),
 			sockfd, be32toh(rsocket->error));
 	write_hdr(c, NS_RSOCKET, sizeof(*rsocket));
@@ -230,7 +379,7 @@ static bool handle_socket(connection *c) {
 static bool abort_connection(connection *c)
 {
 	if (verbose)
-		perror("aborting connection");
+		daemon_perror("aborting connection");
 
 	return false;
 }
@@ -253,7 +402,7 @@ static void conn_read(evutil_socket_t sockfd, short what, void *user)
 	if (!ns_recv(&c->reader)) {
 		if (c->reader.eof) {
 			if (verbose)
-				fprintf(stderr, "Client disconnected\n");
+				daemon_log(LOG_INFO, "Client disconnected\n");
 		} else {
 			abort_connection(c);
 		}
