@@ -12,6 +12,7 @@
 #include <event2/bufferevent.h>
 #include <event2/buffer.h>
 #include <assert.h>
+#include <errno.h>
 #include <libdaemon/daemon.h>
 #include <nsocker/msg.h>
 #include <nsocker/fd.h>

@@ -5,6 +5,6 @@ install:
     - sudo apt-get install python3-dev python2.7-dev libevent-dev libdaemon-dev
 
 script:
-    - cmake .
+    - cmake -DCMAKE_VERBOSE_MAKEFILE=ON .
     - make 
-    - sudo ctest .
+    - sudo ctest -V .

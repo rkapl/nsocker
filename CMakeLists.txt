@@ -4,11 +4,13 @@ include(GNUInstallDirs)
 include(FindPkgConfig)
 enable_testing()
 
+set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-std=gnu99")
+
 add_subdirectory(python)
 add_subdirectory(test)
 
 pkg_check_modules (EV libevent_core)
-if(NOT ${EV_FOUND})
+if(NOT DEFINED ${EV_FOUND})
 	pkg_check_modules (EV REQUIRED libevent)
 endif()
 pkg_check_modules (DAEMON REQUIRED libdaemon)
