@@ -11,6 +11,8 @@ create. It listens on a Unix socket and creates sockets for anyone who asks. The
 important bit is sockets remember their namespace, so your program (the nsocker
 client) gets a socket that obeys the rules of the other network namespace.
 
+[![Build Status](https://travis-ci.org/rkapl/nsocker.svg?branch=master)](https://travis-ci.org/rkapl/nsocker)
+
 ## Example
 
 Let's say you have a simple Python application where you need to access a
