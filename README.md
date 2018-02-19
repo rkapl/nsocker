@@ -55,9 +55,10 @@ by classic Unix permissions. You can sort-of work-around the above using user
 namespaces. But some distributions do not enable them because of security
 concerns (ArchLinux as of late 2017), and you will not be able to get back to
 the original namespace, so you have to fork. Also you can not bind-mount them as
-an ordinary user, so you will need a running process (so why not NSocker?).
+an ordinary user, so you will need a running process to keep the namespaces
+alive (so why not NSocker?).
 
-So the typical use case for NSocker is building a web scraper. You want it to
+The typical use case for NSocker is building a web scraper. You want it to
 have a control interface, but access the web pages using a VPN.
 
 If you have control over yor application, you can use the NSocker C client API
@@ -91,4 +92,4 @@ echo 'PROFIT'
  - The `LD_PRELOAD` component does not affect code inside LibC, so for example DNS
    (gethostbyname) can not be redirected.
  - The NSocker client API is rather simple and single-threaded. The `LD_PRELOAD`
-   library creates a single client per thread.
+   library creates a single connection per thread.
