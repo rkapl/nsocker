@@ -2,7 +2,7 @@ language: c
 sudo: required
 
 install:
-    - sudo apt-get install python3-dev python2.7-dev libevent-dev libdaemon-dev
+    - sudo apt-get install python3-dev python2.7-dev libevent-dev libdaemon-dev cmake
 
 script:
     - cmake -DCMAKE_VERBOSE_MAKEFILE=ON .
