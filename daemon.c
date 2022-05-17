@@ -441,6 +441,7 @@ static void conn_write(evutil_socket_t sockfd, short what, void *user)
 	}
 	if (c->reader.complete) {
 		close(c->sendfd);
+		c->sendfd = NS_NULL_FD;
 		start_receive(c);
 	}
 }
